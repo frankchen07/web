@@ -112,6 +112,7 @@ def calculate_new_clr(aggregated_contributions, pair_totals, threshold=0.0, tota
                     # tot += (v1 * v2) ** 0.5 * min(1, threshold / pair_totals[k1][k2])
                     # vitalik's division formula
                     tot += ((v1 * v2) ** 0.5) / (pair_totals[k1][k2] / threshold + 1)
+                    ### ADD IN NEGATIVE VOTING CALCS HERE WHEN READY
         bigtot += tot
         totals.append({'id': proj, 'clr_amount': tot})
     # find normalization factor
