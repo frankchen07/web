@@ -208,7 +208,7 @@ def calculate_new_clr_separate_final(totals_pos, totals_neg, total_pot=0.0):
 
 
 '''
-    Clubbed function that intakes grant data, calculates necessary intermediate calculations, and spits out clr calculations.
+    Clubbed function that intakes grant data, calculates necessary intermediate calculations, and spits out clr calculations. This function is re-used for positive and negative contributions
     
     Args:
         grant_contributions: {
@@ -231,7 +231,7 @@ def grants_clr_calculate(grant_contributions, total_pot=0.0, threshold=0.0, posi
     grants_list = translate_data(grant_contributions)
     aggregated_contributions, pair_totals = aggregate_contributions(grants_list)
     bigtot, totals = calculate_new_clr_separate(aggregated_contributions, pair_totals, threshold=threshold, total_pot=total_pot, positive=positive)
-    return bigtot, totals
+    return totals
 
 
 
@@ -247,7 +247,7 @@ def grants_clr_calculate(grant_contributions, total_pot=0.0, threshold=0.0, posi
         final_bigtot: should equal total pot
         final_totals: final clr totals
 '''
-def calculate_pos_neg_diff(pos_totals, neg_totals, total_pot, total_pot=0.0):
+def calculate_pos_neg_diff(pos_totals, neg_totals, total_pot=0.0):
     bigtot, totals = calculate_new_clr_separate_final(pos_totals, totals_neg, total_pot=total_pot)
     return final_bigtot, final_totals
 
@@ -277,7 +277,10 @@ def generate_random_contribution_data():
 
 
 
-def calculate_clr_for_donation(donation_grant, donation_amount, base_grant_contributions, total_pot, threshold=0.0):
+def calculate_clr_for_donation(donation_grant, donation_amount, base_grant_contributions, total_pot=0.0, threshold=0.0, positive=True):
+    
+    ### ADITYA TO MAKE SURE GRANT CONTRIBUTIONS MODEL IS UPDATED AND PULL SEPARATE POSITIVE AND NEGATIVE CONTRIBUTIONS, VARIABLES IN THE METHOD grants_clr_calculate LINES 292 AND ON WILL NEED TO BE CHANGED
+
     grant_contributions = copy.deepcopy(base_grant_contributions)
     # find grant in contributions list and add donation
     if donation_amount != 0:
@@ -286,7 +289,9 @@ def calculate_clr_for_donation(donation_grant, donation_amount, base_grant_contr
                 # add this donation with a new profile (id 99999999999) to get impact
                 grant_contribution['contributions'].append({'999999999999': donation_amount})
 
-    _, grants_clr = grants_clr_calculate(grant_contributions)
+    pos_totals = grants_clr_calculate(grant_contributions, total_pot=total_pot, threshold=threshold, positive=positive)
+    neg_totals = grants_clr_calculate(grant_contributions, total_pot=total_pot, threshold=threshold, positive=False)
+    _, grants_clr = calculate_pos_neg_diff(pos_totals, neg_totals, total_pot=total_pot)
 
     # find grant we added the contribution to and get the new clr amount
     for grant_clr in grants_clr:
@@ -390,7 +395,7 @@ LIVE GRANTS FUNDING PAGE METHODS START HERE
 
 
 
-def calculate_clr_for_donation_live(donation_grant, donation_amount, base_grant_contributions, total_pot, threshold=0.0):
+def calculate_clr_for_donation_live(donation_grant, donation_amount, base_grant_contributions, total_pot=0.0, threshold=0.0, positive=True):
     grant_contributions = copy.deepcopy(base_grant_contributions)
     # find grant in contributions list and add donation
     if donation_amount != 0:
@@ -401,7 +406,9 @@ def calculate_clr_for_donation_live(donation_grant, donation_amount, base_grant_
 
     ### PULL FRONTEND USER ID ON GRANT FUNDING PAGE
 
-    _, grants_clr = grants_clr_calculate(grant_contributions)
+    pos_totals = grants_clr_calculate(grant_contributions, total_pot=total_pot, threshold=threshold, positive=positive)
+    neg_totals = grants_clr_calculate(grant_contributions, total_pot=total_pot, threshold=threshold, positive=False)
+    _, grants_clr = calculate_pos_neg_diff(pos_totals, neg_totals, total_pot=total_pot)
 
     # find grant we added the contribution to and get the new clr amount
     for grant_clr in grants_clr:
