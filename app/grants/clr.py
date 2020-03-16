@@ -32,9 +32,11 @@ from perftools.models import JSONStore
 CLR_START_DATE = dt.datetime(2020, 1, 6, 0, 0)
 
 
+
 '''
     Helper function that translates existing grant data structure
     to a list of lists.
+    
     Args:
         {
             'id': (string) ,
@@ -44,6 +46,7 @@ CLR_START_DATE = dt.datetime(2020, 1, 6, 0, 0)
                 }
             ]
         }
+    
     Returns:
         [[grant_id (str), user_id (str), contribution_amount (float)]]
 '''
@@ -57,13 +60,14 @@ def translate_data(grants):
     return grants_list
 
 
+
 '''
-    Helper function that aggregates contributions by contributor, and then
-    uses the aggregated contributors by contributor and calculates total
-    contributions by unique pairs.
+    Helper function that aggregates contributions by contributor, and then uses the aggregated contributors by contributor and calculates total contributions by unique pairs.
+
     Args:
         from translate_data:
         [[grant_id (str), user_id (str), contribution_amount (float)]]
+
     Returns:
         {grant_id (str): {user_id (str): aggregated_amount (float)}}
         {user_id (str): {user_id (str): pair_total (float)}}
@@ -90,12 +94,13 @@ def aggregate_contributions(grant_contributions):
 
 '''
     Helper function that runs the pairwise clr formula while "binary" searching for the correct threshold.
+
     Args:
-    
         aggregated_contributions: {grant_id (str): {user_id (str): aggregated_amount (float)}}
         pair_totals: {user_id (str): {user_id (str): pair_total (float)}}
         threshold: pairwise coefficient
         total_pot: total pot for the tech or media round, default tech
+
     Returns:
         totals: total clr award by grant, normalized by the normalization factor
 '''
@@ -127,10 +132,86 @@ def calculate_new_clr(aggregated_contributions, pair_totals, threshold=0.0, tota
 
 
 '''
-    Clubbed function that intakes grant data, calculates necessary
-    intermediate calculations, and spits out clr calculations.
+    Helper function that runs the pairwise clr formula for positive or negative instances, depending on the switch.
+
     Args:
-        grant_contributions:    {
+        aggregated_contributions: {grant_id (str): {user_id (str): aggregated_amount (float)}}
+        pair_totals: {user_id (str): {user_id (str): pair_total (float)}}
+        threshold: pairwise coefficient
+        total_pot: total pot set for the round category
+        positive: positive or negative contributions
+
+    Returns:
+        totals: total clr, positive or negative sum and award by grant
+'''
+def calculate_new_clr_separate(aggregated_contributions, pair_totals, threshold=0.0, total_pot=0.0, positive=True):
+    bigtot = 0
+    totals = []
+    if positive:  # positive
+        for proj, contribz in aggregated_contributions.items():
+            tot = 0
+            for k1, v1 in contribz.items():
+                for k2, v2 in contribz.items():
+                    if k2 > k1:  # removes single donations, vitalik's formula
+                        tot += ((v1 * v2) ** 0.5) / (pair_totals[k1][k2] / threshold + 1)
+            bigtot += tot
+            totals.append({'id': proj, 'clr_amount': tot})
+    
+    if not positive:  # negative
+        for proj, contribz in aggregated_contributions.items():
+            tot = 0
+            for k1, v1 in contribz.items():
+                for k2, v2 in contribz.items():
+                    if k2 > k1:  # removes single donations but adds it in below, vitalik's formula
+                        tot += ((v1 * v2) ** 0.5) / (pair_totals[k1][k2] / threshold + 1)
+                    if k2 == k1:  # negative vote will count less if single, but will count
+                        tot += ((v1 * v2) ** 0.5) / (pair_totals[k1][k2] / 1 + 1)
+            bigtot += tot
+            totals.append({'id': proj, 'clr_amount': tot})
+
+    return bigtot, totals
+
+
+
+'''
+    Helper function that calculates the final difference between positive and negative totals and finds the final clr reward amount. The amount is also normalized as well. 
+
+    ### UNCOMMENTING CHANGES HERE MAY BE NECESSARY HERE FOR NORMALIZATION ###
+
+    Args:
+        totals_pos: [{'id': proj, 'clr_amount': tot}]
+        totals_neg: [{'id': proj, 'clr_amount': tot}]
+        total_pot: total pot for the category round
+
+    Returns:
+        totals: total clr award by grant pos less neg, normalized by the normalization factor
+'''
+def calculate_new_clr_separate_final(totals_pos, totals_neg, total_pot=0.0):
+    # calculate final totals
+    totals = [{'id': x['id'], 'clr_amount': (math.sqrt(x['clr_amount']) - math.sqrt(y['clr_amount']))**2} for x in totals_pos for y in totals_neg if x['id'] == y['id']]
+    for x in totals:
+        if x['clr_amount'] < 0:
+            x['clr_amount'] = 0
+    
+    # # find normalization factor
+    # bigtot = 0 
+    # for x in totals:
+    #     bigtot += x['clr_amount']
+    # normalization_factor = bigtot / total_pot
+
+    # # modify totals
+    # for x in totals:
+    #     x['clr_amount'] = x['clr_amount'] / normalization_factor
+
+    return bigtot, totals
+
+
+
+'''
+    Clubbed function that intakes grant data, calculates necessary intermediate calculations, and spits out clr calculations.
+    
+    Args:
+        grant_contributions: {
             'id': (string) ,
             'contributions' : [
                 {
@@ -138,17 +219,37 @@ def calculate_new_clr(aggregated_contributions, pair_totals, threshold=0.0, tota
                 }
             ]
         }
-        total_pot       (float)
-        lower_bound     (float)
+        threshold: pairwise coefficient
+        total_pot: total pot set for the round category
+        positive: positive or negative contributions
+
     Returns:
         bigtot: should equal total pot
         totals: clr totals
 '''
-def grants_clr_calculate(grant_contributions, total_pot=0.0, threshold=0.0):
+def grants_clr_calculate(grant_contributions, total_pot=0.0, threshold=0.0, positive=True):
     grants_list = translate_data(grant_contributions)
     aggregated_contributions, pair_totals = aggregate_contributions(grants_list)
-    bigtot, totals = calculate_new_clr(aggregated_contributions, pair_totals)
+    bigtot, totals = calculate_new_clr_separate(aggregated_contributions, pair_totals, threshold=threshold, total_pot=total_pot, positive=positive)
     return bigtot, totals
+
+
+
+'''
+    Clubbed function that intakes the result of grants_clr_calculate and calculates the final difference calculation between positive and negative grant contributions.
+
+    Args:
+        totals_pos: [{'id': proj, 'clr_amount': tot}]
+        totals_neg: [{'id': proj, 'clr_amount': tot}]
+        total_pot: total pot set for the round category
+
+    Returns:
+        final_bigtot: should equal total pot
+        final_totals: final clr totals
+'''
+def calculate_pos_neg_diff(pos_totals, neg_totals, total_pot, total_pot=0.0):
+    bigtot, totals = calculate_new_clr_separate_final(pos_totals, totals_neg, total_pot=total_pot)
+    return final_bigtot, final_totals
 
 
 
