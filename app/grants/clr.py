@@ -93,45 +93,6 @@ def aggregate_contributions(grant_contributions):
 
 
 '''
-    Helper function that runs the pairwise clr formula while "binary" searching for the correct threshold.
-
-    Args:
-        aggregated_contributions: {grant_id (str): {user_id (str): aggregated_amount (float)}}
-        pair_totals: {user_id (str): {user_id (str): pair_total (float)}}
-        threshold: pairwise coefficient
-        total_pot: total pot for the tech or media round, default tech
-
-    Returns:
-        totals: total clr award by grant, normalized by the normalization factor
-'''
-def calculate_new_clr(aggregated_contributions, pair_totals, threshold=0.0, total_pot=0.0):
-    bigtot = 0
-    totals = []
-    # single donation doesn't get a match
-    for proj, contribz in aggregated_contributions.items():
-        tot = 0
-        for k1, v1 in contribz.items():
-            for k2, v2 in contribz.items():
-                if k2 > k1:  # remove pairs
-                    # # pairwise matching formula
-                    # tot += (v1 * v2) ** 0.5 * min(1, threshold / pair_totals[k1][k2])
-                    # vitalik's division formula
-                    tot += ((v1 * v2) ** 0.5) / (pair_totals[k1][k2] / threshold + 1)
-                    ### ADD IN NEGATIVE VOTING CALCS HERE WHEN READY
-        bigtot += tot
-        totals.append({'id': proj, 'clr_amount': tot})
-    # find normalization factor
-    normalization_factor = bigtot / total_pot
-    # modify totals
-    for result in totals:
-        result['clr_amount'] = result['clr_amount'] / normalization_factor
-    # # check total = pot
-    # print(f'total pot check = {sum([x["clr_amount"] for x in totals])}')
-    return bigtot, totals 
-
-
-
-'''
     Helper function that runs the pairwise clr formula for positive or negative instances, depending on the switch.
 
     Args:
@@ -144,7 +105,7 @@ def calculate_new_clr(aggregated_contributions, pair_totals, threshold=0.0, tota
     Returns:
         totals: total clr, positive or negative sum and award by grant
 '''
-def calculate_new_clr_separate(aggregated_contributions, pair_totals, threshold=0.0, total_pot=0.0, positive=True):
+def calculate_new_clr(aggregated_contributions, pair_totals, threshold=0.0, total_pot=0.0, positive=True):
     bigtot = 0
     totals = []
     if positive:  # positive
@@ -186,7 +147,7 @@ def calculate_new_clr_separate(aggregated_contributions, pair_totals, threshold=
     Returns:
         totals: total clr award by grant pos less neg, normalized by the normalization factor
 '''
-def calculate_new_clr_separate_final(totals_pos, totals_neg, total_pot=0.0):
+def calculate_new_clr_final(totals_pos, totals_neg, total_pot=0.0):
     # calculate final totals
     totals = [{'id': x['id'], 'clr_amount': (math.sqrt(x['clr_amount']) - math.sqrt(y['clr_amount']))**2} for x in totals_pos for y in totals_neg if x['id'] == y['id']]
     for x in totals:
@@ -230,7 +191,7 @@ def calculate_new_clr_separate_final(totals_pos, totals_neg, total_pot=0.0):
 def grants_clr_calculate(grant_contributions, total_pot=0.0, threshold=0.0, positive=True):
     grants_list = translate_data(grant_contributions)
     aggregated_contributions, pair_totals = aggregate_contributions(grants_list)
-    bigtot, totals = calculate_new_clr_separate(aggregated_contributions, pair_totals, threshold=threshold, total_pot=total_pot, positive=positive)
+    bigtot, totals = calculate_new_clr(aggregated_contributions, pair_totals, threshold=threshold, total_pot=total_pot, positive=positive)
     return totals
 
 
@@ -246,9 +207,17 @@ def grants_clr_calculate(grant_contributions, total_pot=0.0, threshold=0.0, posi
     Returns:
         final_bigtot: should equal total pot
         final_totals: final clr totals
+
+    Final flow:
+        grants_clr_calculate includes:
+            translate_data
+            aggregate_contributions
+            calculate_new_clr
+        and outputs: positive & negatives clr amounts
+        grants_clr_calculate_pos_neg uses output from grants_clr_calculates to output final totals
 '''
-def calculate_pos_neg_diff(pos_totals, neg_totals, total_pot=0.0):
-    bigtot, totals = calculate_new_clr_separate_final(pos_totals, totals_neg, total_pot=total_pot)
+def grants_clr_calculate_pos_neg(pos_totals, neg_totals, total_pot=0.0):
+    bigtot, totals = calculate_new_clr_final(pos_totals, totals_neg, total_pot=total_pot)
     return final_bigtot, final_totals
 
 
@@ -279,7 +248,7 @@ def generate_random_contribution_data():
 
 def calculate_clr_for_donation(donation_grant, donation_amount, base_grant_contributions, total_pot=0.0, threshold=0.0, positive=True):
     
-    ### ADITYA TO MAKE SURE GRANT CONTRIBUTIONS MODEL IS UPDATED AND PULL SEPARATE POSITIVE AND NEGATIVE CONTRIBUTIONS, VARIABLES IN THE METHOD grants_clr_calculate LINES 292 AND ON WILL NEED TO BE CHANGED
+    ### ADD NEW GRANT CONTRIBUTIONS MODEL IS UPDATED AND PULL SEPARATE POSITIVE AND NEGATIVE CONTRIBUTIONS, INPUT VARIABLES IN THE METHOD grants_clr_calculate LINES 292 AND ON WILL NEED TO BE CHANGED
 
     grant_contributions = copy.deepcopy(base_grant_contributions)
     # find grant in contributions list and add donation
@@ -291,7 +260,7 @@ def calculate_clr_for_donation(donation_grant, donation_amount, base_grant_contr
 
     pos_totals = grants_clr_calculate(grant_contributions, total_pot=total_pot, threshold=threshold, positive=positive)
     neg_totals = grants_clr_calculate(grant_contributions, total_pot=total_pot, threshold=threshold, positive=False)
-    _, grants_clr = calculate_pos_neg_diff(pos_totals, neg_totals, total_pot=total_pot)
+    _, grants_clr = grants_clr_calculate_pos_neg(pos_totals, neg_totals, total_pot=total_pot)
 
     # find grant we added the contribution to and get the new clr amount
     for grant_clr in grants_clr:
@@ -408,7 +377,7 @@ def calculate_clr_for_donation_live(donation_grant, donation_amount, base_grant_
 
     pos_totals = grants_clr_calculate(grant_contributions, total_pot=total_pot, threshold=threshold, positive=positive)
     neg_totals = grants_clr_calculate(grant_contributions, total_pot=total_pot, threshold=threshold, positive=False)
-    _, grants_clr = calculate_pos_neg_diff(pos_totals, neg_totals, total_pot=total_pot)
+    _, grants_clr = grants_clr_calculate_pos_neg(pos_totals, neg_totals, total_pot=total_pot)
 
     # find grant we added the contribution to and get the new clr amount
     for grant_clr in grants_clr:
