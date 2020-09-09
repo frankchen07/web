@@ -376,7 +376,7 @@ class Grant(SuperModel):
     def updateActiveSubscriptions(self):
         """updates the active subscriptions list"""
         handles = []
-        for handle in Subscription.objects.filter(grant=self, active=True, is_postive_vote=True).distinct('contributor_profile').values_list('contributor_profile__handle', flat=True):
+        for handle in Subscription.objects.filter(grant=self, active=True).distinct('contributor_profile').values_list('contributor_profile__handle', flat=True):
             handles.append(handle)
         self.activeSubscriptions = handles
 
@@ -433,7 +433,7 @@ class Grant(SuperModel):
     @property
     def get_contribution_count(self):
         num = 0
-        for sub in self.subscriptions.filter(is_postive_vote=True):
+        for sub in self.subscriptions:
             for contrib in sub.subscription_contribution.filter(success=True):
                 num += 1
         for pf in self.phantom_funding.all():
@@ -443,23 +443,22 @@ class Grant(SuperModel):
     @property
     def contributors(self):
         return_me = []
-        for sub in self.subscriptions.filter(is_postive_vote=True):
+        for sub in self.subscriptions:
             for contrib in sub.subscription_contribution.filter(success=True):
                 return_me.append(contrib.subscription.contributor_profile)
         for pf in self.phantom_funding.all():
             return_me.append(pf.profile)
         return return_me
 
-    def get_contributor_count(self, since=None, is_postive_vote=True):
+    def get_contributor_count(self, since=None):
         if not since:
             since = timezone.datetime(1990, 1, 1)
         contributors = []
-        for sub in self.subscriptions.filter(is_postive_vote=is_postive_vote):
+        for sub in self.subscriptions:
             for contrib in sub.subscription_contribution.filter(success=True, created_on__gt=since):
                 contributors.append(contrib.subscription.contributor_profile.handle)
-        if is_postive_vote:
-            for pf in self.phantom_funding.filter(created_on__gt=since).all():
-                contributors.append(pf.profile.handle)
+        for pf in self.phantom_funding.filter(created_on__gt=since).all():
+            contributors.append(pf.profile.handle)
         return len(set(contributors))
 
 
@@ -574,7 +573,7 @@ class Subscription(SuperModel):
         help_text=_('The tx id of the split transfer'),
         blank=True,
     )
-    is_postive_vote = models.BooleanField(default=True, help_text=_('Whether this is positive or negative vote'))
+    # is_postive_vote = models.BooleanField(default=True, help_text=_('Whether this is positive or negative vote'))
     split_tx_confirmed = models.BooleanField(default=False, help_text=_('Whether or not the split tx succeeded.'))
 
     subscription_hash = models.CharField(
@@ -695,9 +694,9 @@ class Subscription(SuperModel):
     )
     tenant = models.CharField(max_length=10, null=True, blank=True, default="ETH", choices=TENANT, help_text="specific tenant in which contribution is made")
 
-    @property
-    def negative(self):
-        return self.is_postive_vote == False
+    # @property
+    # def negative(self):
+    #     return self.is_postive_vote == False
 
     @property
     def status(self):
